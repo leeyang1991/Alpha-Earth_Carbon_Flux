@@ -1,8 +1,11 @@
 # coding=utf-8
 import shutil
 
+import matplotlib.pyplot as plt
 import numpy as np
 import urllib3
+from numpy.ma.extras import average
+
 from __init__ import *
 import ee
 import math
@@ -121,7 +124,7 @@ class Download_from_GEE:
             this_script_root, mode=2)
 
         # ee.Authenticate()
-        ee.Initialize(project='lyfq-263413')
+        # ee.Initialize(project='lyfq-263413')
 
         # pause()
         # exit()
@@ -133,7 +136,10 @@ class Download_from_GEE:
         #     self.download_images(year)
         # self.check()
         # self.unzip()
-        self.merge_bands()
+        # self.reproj()
+        # self.mosaic_tiles()
+        # self.check_mosaic_tiles()
+        self.average_embedding()
         pass
 
 
@@ -313,25 +319,84 @@ class Download_from_GEE:
         outband.FlushCache()
         del outRaster
 
-    def gdal_merge_bands(self,tif_list,bands_name_list,outf):
-        src0 = gdal.Open(tif_list[0])
-        driver = gdal.GetDriverByName('GTiff')
-        out_ds = driver.Create(outf,
-                               src0.RasterXSize,
-                               src0.RasterYSize,
-                               len(tif_list),
-                               gdal.GDT_Float32)
+    def reproj(self):
+        fdir = join(self.this_class_arr, 'unzip')
+        outdir = join(self.this_class_arr, 'reproj')
+        T.mkdir(outdir)
+        dst_crs = global_wkt_84()
 
-        out_ds.SetGeoTransform(src0.GetGeoTransform())
-        out_ds.SetProjection(src0.GetProjection())
-        for idx, tif in enumerate(tif_list, start=1):
-            src = gdal.Open(tif)
-            band = src.GetRasterBand(1).ReadAsArray()
-            out_ds.GetRasterBand(idx).WriteArray(band)
-            out_ds.GetRasterBand(idx).SetDescription(bands_name_list[idx - 1])
+        for year in T.listdir(fdir):
+            for site in tqdm(T.listdir(join(fdir, year)),desc=year):
+                flist = []
+                outdir_site = join(outdir, str(year), site)
+                T.mkdir(outdir_site, force=True)
+                for embedding in self.bands_list():
+                    for folder in T.listdir(join(fdir, year, site)):
+                        fpath = join(fdir, year, site, folder, f'{folder}.{embedding}.tif')
+                        outdir_i = join(outdir_site, folder)
+                        outf = join(outdir_i, f'{folder}.{embedding}.tif')
+                        T.mkdir(outdir_i, force=True)
+                        # print(outdir_i)
+                        RasterIO_Func().reproject_tif(fpath,outf,dst_crs,dst_crs_res=None)
 
-        out_ds.FlushCache()
-        out_ds = None
+    def mosaic_tiles(self):
+        fdir = join(self.this_class_arr, 'reproj')
+        outdir = join(self.this_class_arr, 'mosaic')
+        T.mkdir(outdir)
+        for year in T.listdir(fdir):
+            for site in tqdm(T.listdir(join(fdir,year)),desc=year):
+                flist = []
+                outdir_site = join(outdir,str(year),site)
+                T.mkdir(outdir_site,force=True)
+                for embedding in self.bands_list():
+                    fpath_list = []
+                    for folder in T.listdir(join(fdir,year,site)):
+                        fpath = join(fdir,year,site,folder,f'{folder}.{embedding}.tif')
+                        fpath_list.append(fpath)
+                    outf = join(outdir_site,f'{embedding}.tif')
+                    RasterIO_Func().mosaic_tifs(fpath_list,outf)
+            pass
+        pass
+
+    def check_mosaic_tiles(self):
+        fdir = join(self.this_class_arr, 'mosaic')
+        for year in T.listdir(fdir):
+            for site in tqdm(T.listdir(join(fdir, year)), desc=year):
+                flist = []
+                for embedding in self.bands_list():
+                    fpath = join(fdir, year, site, f'{embedding}.tif')
+                    data,profile = RasterIO_Func().read_tif(fpath)
+                    plt.imshow(data)
+                    plt.title(site)
+                    plt.show()
+                    break
+            exit()
+        pass
+
+    def average_embedding(self):
+        embedding_fdir = join(self.this_class_arr,'mosaic')
+        outdir = join(self.this_class_arr, 'average_embedding')
+        T.mkdir(outdir)
+        indx = 0
+        df_dict = {}
+        for year in T.listdir(embedding_fdir):
+            for site in tqdm(T.listdir(join(embedding_fdir,year)),desc=year):
+                df_dict[indx] = {
+                    'year': year,
+                    'site': site}
+                for embedding in self.bands_list():
+                    fpath = join(embedding_fdir,year,site,f'{embedding}.tif')
+                    data,profile = RasterIO_Func().read_tif(fpath)
+                    data[np.isinf(data)] = np.nan
+                    average = np.nanmean(data)
+                    df_dict[indx][embedding] = average
+                indx += 1
+        col_order = ['site','year'] + self.bands_list()
+        df = T.dic_to_df(df_dict, key_col_str='indx',col_order=col_order)
+        df = df.drop(columns=['indx'])
+        outf = join(outdir,'average_embedding.df')
+        T.save_df(df,outf)
+        T.df_to_excel(df,outf)
 
 
 def main():
