@@ -1,8 +1,138 @@
 from __global__ import *
+from __init__ import *
 
 this_script_root = join(results_root,'RF')
-def main():
 
+class Random_forests:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = \
+            T.mk_class_dir('Random_forests', this_script_root, mode=2)
+        self.dff = join(self.this_class_arr, 'dataframe', 'dataframe.df')
+        pass
+
+    def run(self):
+        # self.copy_monthly_df()
+        # self.train_monthly()
+        self.train_annual()
+        pass
+
+    def train_annual(self):
+        from preprocess import GEE_Embedding
+        outdir = join(self.this_class_arr,'train_annual_models')
+        T.mkdir(outdir)
+        # self.copy_df()
+        df = self.__gen_df_init()
+        x_variables = GEE_Embedding.Download_from_GEE().bands_list()
+        y_variable = 'GPP_NT_VUT_REF'
+        X = df[x_variables]
+        Y = df[y_variable]
+        clf, mse, r_model,r_model_train, score, score_train, Y_test, y_pred, Y_train, y_pred_train = self._random_forest_train(X, Y)
+        model_path = join(outdir, f'{y_variable}_rf_model.pkl')
+        T.save_dict_to_binary(clf, model_path)
+        pass
+
+    def train_monthly(self):
+        from preprocess import GEE_Embedding
+        outdir = join(self.this_class_arr,'train_monthly_models')
+        T.mkdir(outdir)
+        # self.copy_df()
+        df_dir = join(self.this_class_arr, 'dataframe_monthly')
+        for f in T.listdir(df_dir):
+            dff = join(df_dir, f)
+            if not dff.endswith('.df'):
+                continue
+            df = T.load_df(dff)
+            x_variables = GEE_Embedding.Download_from_GEE().bands_list()
+            y_variable = 'GPP_NT_VUT_REF'
+            X = df[x_variables]
+            Y = df[y_variable]
+            clf, mse, r_model, r_model_train, score, score_train, Y_test, y_pred, Y_train, y_pred_train = self._random_forest_train(
+                X, Y)
+            model_name = f.replace('.df','_rf_model.pkl')
+            model_path = join(outdir, model_name)
+            T.save_dict_to_binary(clf, model_path)
+
+    def copy_df(self):
+        from preprocess import dataframe
+        T.mkdir(join(self.this_class_arr, 'dataframe'))
+        if isfile(self.dff):
+            print('already exists: ', self.dff)
+            print('press enter to overwrite')
+            pause()
+            pause()
+            pause()
+        T.mkdir(join(self.this_class_arr, 'dataframe'))
+        dff = join(dataframe.Gen_Dataframe().this_class_arr, 'dataframe.df')
+        df = T.load_df(dff)
+        T.save_df(df,self.dff)
+        T.df_to_excel(df, self.dff)
+
+    def copy_monthly_df(self):
+        from preprocess import dataframe
+        outdir = join(self.this_class_arr, 'dataframe_monthly')
+        T.mkdir(outdir)
+        fdir = join(dataframe.Gen_Dataframe_monthly().this_class_arr,'monthly_df')
+        for f in T.listdir(fdir):
+            fpath = join(fdir, f)
+            out_path = join(outdir,f)
+            shutil.copy(fpath, out_path)
+
+    def __gen_df_init(self):
+        if not os.path.isfile(self.dff):
+            df = pd.DataFrame()
+            T.save_df(df,self.dff)
+            return df
+        else:
+            df,dff = self.__load_df()
+            return df
+
+    def __load_df(self):
+        dff = self.dff
+        df = T.load_df(dff)
+        T.print_head_n(df)
+        print('len(df):',len(df))
+        return df,dff
+
+    def _random_forest_train(self, X, Y):
+        '''
+        :param X: a dataframe of x variables
+        :param Y: a dataframe of y variable
+        :param variable_list: a list of x variables
+        :return: details of the random forest model and the importance of each variable
+        '''
+        X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=1) # split the data into training and testing
+        clf = RandomForestRegressor(n_estimators=100, n_jobs=-1) # build a random forest model
+        clf.fit(X_train, Y_train) # train the model
+        y_pred = clf.predict(X_test) # predict the y variable using the testing data
+        y_pred_train = clf.predict(X_train) # predict the y variable using the training data
+        r_model = stats.pearsonr(Y_test, y_pred)[0] # calculate the correlation between the predicted y variable and the actual y variable
+        r_model_train = stats.pearsonr(Y_train, y_pred_train)[0]
+        mse = sklearn.metrics.mean_squared_error(Y_test, y_pred) # calculate the mean squared error
+        score = clf.score(X_test, Y_test) # calculate the R^2
+        score_train = clf.score(X_train, Y_train)
+        # return clf, importances_dic, mse, r_model, score, Y_test, y_pred
+        return clf, mse, r_model,r_model_train, score, score_train, Y_test, y_pred, Y_train, y_pred_train
+
+
+
+    def __train_model(self,X,y):
+        '''
+        :param X: a dataframe of x variables
+        :param y: a dataframe of y variable
+        :return: a random forest model and the R^2
+        '''
+        # X_train, X_test, y_train, y_test = train_test_split(
+        #     X, y, random_state=1, test_size=0.0) # split the data into training and testing
+        rf = RandomForestRegressor(n_estimators=100, random_state=42,n_jobs=20) # build a random forest model
+        rf.fit(X, y) # train the model
+        # r2 = rf.score(X_test,y_test)
+        return rf,0.999
+
+
+
+def main():
+    Random_forests().run()
     pass
 
 if __name__ == '__main__':

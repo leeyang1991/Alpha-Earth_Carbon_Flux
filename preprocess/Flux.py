@@ -18,6 +18,7 @@ class Fluxdata_Metadata:
     def write_metadata_from_xlsx(self):
 
         outdir = join(self.data_dir, 'metadata')
+        T.mkdir(outdir)
         outf = join(outdir, 'metadata.df')
         if isfile(outf):
             return
@@ -168,8 +169,8 @@ class Fluxdata:
     def __init__(self):
         # gpp_var: GPP_NT_VUT_REF
         self.data_dir = join(data_root, 'Flux/')
-        # self.temporal_res = 'YY'
-        self.temporal_res = 'MM'
+        self.temporal_res = 'YY'
+        # self.temporal_res = 'MM'
         self.var = 'GPP_NT_VUT_REF'
         pass
 
@@ -190,6 +191,8 @@ class Fluxdata:
         all_dict = {}
         for folder in tqdm(T.listdir(fdir)):
             if folder.endswith('.csv'):
+                continue
+            if folder.endswith('.xlsx'):
                 continue
             folder = str(folder)
             fdir_i = join(fdir, folder)
@@ -406,8 +409,8 @@ class Fluxdata:
 
 
 def main():
-    Fluxdata_Metadata().run()
-    # Fluxdata().run()
+    # Fluxdata_Metadata().run()
+    Fluxdata().run()
 
 if __name__ == '__main__':
     main()
