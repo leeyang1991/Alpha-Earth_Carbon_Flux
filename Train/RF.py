@@ -1,3 +1,6 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
 from __global__ import *
 from __init__ import *
 
@@ -130,9 +133,73 @@ class Random_forests:
         return rf,0.999
 
 
+class Predict:
+
+    def __init__(self):
+        self.this_class_arr, self.this_class_tif, self.this_class_png = \
+            T.mk_class_dir('Predict', this_script_root, mode=2)
+        pass
+
+    def run(self):
+        self.predict_annual()
+        pass
+
+    def predict_annual(self):
+        from preprocess import GEE_Embedding
+        outdir = join(self.this_class_tif,'predict_annual')
+        T.mkdir(outdir)
+        model_path = join(Random_forests().this_class_arr,'train_annual_models','GPP_NT_VUT_REF_rf_model.pkl')
+        clf = T.load_dict_from_binary(model_path)
+        tif_dir = join(GEE_Embedding.Download_from_GEE().this_class_arr,'mosaic')
+        for year in T.listdir(tif_dir):
+            outdir_i = join(outdir, year)
+            T.mkdir(outdir_i, force=True)
+            site_flag = 0
+            total_site_flag = len(T.listdir(join(tif_dir,year)))
+            for site in T.listdir(join(tif_dir,year)):
+                data_list = []
+                profile = ''
+                for f in T.listdir(join(tif_dir,year,site)):
+                    fpath = join(tif_dir,year,site,f)
+                    data,profile = RasterIO_Func().read_tif(fpath)
+                    data_list.append(data)
+                data_list = np.array(data_list)
+                predicted_array = np.ones_like(data_list) * np.nan
+                predicted_array = predicted_array[0]
+                n_rows, n_cols = data_list.shape[1], data_list.shape[2]
+
+                params_list = []
+                for i in range(n_rows):
+                    params = (n_cols, data_list, clf, i)
+                    params_list.append(params)
+                site_flag += 1
+
+                results = MULTIPROCESS(self.kernel_predict, params_list).run(process=24,desc=f'{site_flag}/{total_site_flag} in {year}')
+                for i in range(len(results)):
+                    arr_i, ii = results[i]
+                    predicted_array[ii] = arr_i
+                outf = join(outdir_i,f'{site}.tif')
+                RasterIO_Func().write_tif(predicted_array, outf, profile)
+
+
+    def kernel_predict(self,params):
+        n_cols, data_list, clf, i = params
+        y_pred_list = []
+        for j in range(n_cols):
+            x_values = data_list[:, i, j]
+            if np.any(np.isinf(x_values)):
+                y_pred_list.append(np.nan)
+                continue
+            x_values = x_values.reshape(1, -1)
+            y_pred = clf.predict(x_values)[0]
+            # print(y_pred)
+            y_pred_list.append(y_pred)
+        y_pred_list = np.array(y_pred_list)
+        return y_pred_list,i
 
 def main():
-    Random_forests().run()
+    # Random_forests().run()
+    Predict().run()
     pass
 
 if __name__ == '__main__':
