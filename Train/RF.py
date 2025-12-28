@@ -1,7 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-
-from __global__ import *
 from __init__ import *
 
 this_script_root = join(results_root,'RF')
@@ -141,7 +139,10 @@ class Predict:
         pass
 
     def run(self):
-        self.predict_annual()
+        # self.predict_annual()
+        self.predict_monthly()
+        # self.concat_predict_annual()
+        # self.concat_predict_monthly()
         pass
 
     def predict_annual(self):
@@ -157,6 +158,10 @@ class Predict:
             site_flag = 0
             total_site_flag = len(T.listdir(join(tif_dir,year)))
             for site in T.listdir(join(tif_dir,year)):
+                outf = join(outdir_i, f'{site}.tif')
+                site_flag += 1
+                if isfile(outf):
+                    continue
                 data_list = []
                 profile = ''
                 for f in T.listdir(join(tif_dir,year,site)):
@@ -172,15 +177,143 @@ class Predict:
                 for i in range(n_rows):
                     params = (n_cols, data_list, clf, i)
                     params_list.append(params)
-                site_flag += 1
+
 
                 results = MULTIPROCESS(self.kernel_predict, params_list).run(process=24,desc=f'{site_flag}/{total_site_flag} in {year}')
                 for i in range(len(results)):
                     arr_i, ii = results[i]
                     predicted_array[ii] = arr_i
-                outf = join(outdir_i,f'{site}.tif')
+
                 RasterIO_Func().write_tif(predicted_array, outf, profile)
 
+    def predict_monthly(self):
+        from preprocess import GEE_Embedding
+        outdir = join(self.this_class_tif, 'predict_monthly')
+        T.mkdir(outdir)
+
+        tif_dir = join(GEE_Embedding.Download_from_GEE().this_class_arr, 'mosaic')
+
+        month_list = list(range(1,13))
+        year_list = T.listdir(tif_dir)
+        site_list = T.listdir(join(tif_dir,year_list[0]))
+
+        model_dict = {}
+        for mon in month_list:
+            model_path = join(Random_forests().this_class_arr, 'train_monthly_models',
+                              f'GPP_NT_VUT_REF_{mon:02d}_rf_model.pkl')
+            clf = T.load_dict_from_binary(model_path)
+            model_dict[mon] = clf
+
+        params_list = []
+
+        for site in site_list:
+            outdir_i = join(outdir, site)
+            for year in year_list:
+                for mon in month_list:
+                    params = [model_dict, outdir_i, site, tif_dir, year, mon]
+                    params_list.append(params)
+                    # self.kernel_predict_monthly(params)
+
+        MULTIPROCESS(self.kernel_predict_monthly, params_list).run(process=24)
+
+    def kernel_predict_monthly(self, params):
+        model_dict,outdir_i,site,tif_dir,year,mon = params
+        clf = model_dict[mon]
+        try:
+            T.mkdir(outdir_i, force=True)
+        except:
+            pass
+        outf = join(outdir_i, f'{year}-{mon:02d}.tif')
+        if isfile(outf):
+            return
+        data_list = []
+        profile = ''
+        for f in T.listdir(join(tif_dir, year, site)):
+            fpath = join(tif_dir, year, site, f)
+            data, profile = RasterIO_Func().read_tif(fpath)
+            data_list.append(data)
+        data_list = np.array(data_list)
+        predicted_array = np.ones_like(data_list) * np.nan
+        predicted_array = predicted_array[0]
+        n_rows, n_cols = data_list.shape[1], data_list.shape[2]
+
+        for i in range(n_rows):
+            for j in range(n_cols):
+                x_values = data_list[:, i, j]
+                if np.any(np.isinf(x_values)):
+                    continue
+                x_values = x_values.reshape(1, -1)
+                y_pred = clf.predict(x_values)[0]
+                predicted_array[i, j] = y_pred
+
+        RasterIO_Func().write_tif(predicted_array, outf, profile)
+
+    def concat_predict_annual(self):
+        fdir = join(self.this_class_tif, 'predict_annual')
+        outdir = join(self.this_class_tif, 'concat_predict_annual')
+        T.mkdir(outdir)
+        site_list = []
+        for year in T.listdir(fdir):
+            for site in T.listdir(join(fdir,year)):
+                if not site.endswith('.tif'):
+                    continue
+                site_list.append(site)
+            break
+        fail_num = 0
+        for site in tqdm(site_list):
+            # if not site == 'CA-ARB.tif':
+            #     continue
+            array_3d = []
+            profile = ''
+            for year in T.listdir(join(fdir)):
+                fpath = join(fdir,year,site)
+                data,profile = RasterIO_Func().read_tif(fpath)
+                # print(data.shape)
+                array_3d.append(data)
+            outf = join(outdir,site)
+            try:
+                array_3d = np.array(array_3d)
+                bands_description = T.listdir(join(fdir))
+                RasterIO_Func().write_tif_multi_bands(array_3d, outf, profile, bands_description)
+            except:
+                print(site)
+                fail_num += 1
+        print(fail_num)
+
+        pass
+
+    def concat_predict_monthly(self):
+        fdir = join(self.this_class_tif, 'predict_monthly')
+        outdir = join(self.this_class_tif, 'concat_predict_monthly')
+        T.mkdir(outdir)
+
+        for site in T.listdir(fdir):
+            date_list = []
+            for date in T.listdir(join(fdir,site)):
+                if not date.endswith('.tif'):
+                    continue
+                date_str = date.replace('.tif','')
+                date_list.append(date_str)
+
+            fail_num = 0
+            array_3d = []
+            profile = ''
+            for date in tqdm(date_list):
+                fpath = join(fdir,site,date+'.tif')
+                data,profile = RasterIO_Func().read_tif(fpath)
+                # print(data.shape)
+                array_3d.append(data)
+            outf = join(outdir,site+'.tif')
+            try:
+                array_3d = np.array(array_3d)
+                bands_description = date_list
+                RasterIO_Func().write_tif_multi_bands(array_3d, outf, profile, bands_description)
+            except:
+                print(site)
+                fail_num += 1
+            print(fail_num)
+
+        pass
 
     def kernel_predict(self,params):
         n_cols, data_list, clf, i = params
