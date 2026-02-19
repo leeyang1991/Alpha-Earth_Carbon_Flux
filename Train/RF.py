@@ -140,9 +140,9 @@ class Predict:
 
     def run(self):
         # self.predict_annual()
-        self.predict_monthly()
+        # self.predict_monthly()
         # self.concat_predict_annual()
-        # self.concat_predict_monthly()
+        self.concat_predict_monthly()
         pass
 
     def predict_annual(self):
@@ -287,7 +287,8 @@ class Predict:
         outdir = join(self.this_class_tif, 'concat_predict_monthly')
         T.mkdir(outdir)
 
-        for site in T.listdir(fdir):
+        fail_num = 0
+        for site in tqdm(T.listdir(fdir)):
             date_list = []
             for date in T.listdir(join(fdir,site)):
                 if not date.endswith('.tif'):
@@ -295,7 +296,6 @@ class Predict:
                 date_str = date.replace('.tif','')
                 date_list.append(date_str)
 
-            fail_num = 0
             array_3d = []
             profile = ''
             for date in tqdm(date_list):
@@ -303,7 +303,7 @@ class Predict:
                 data,profile = RasterIO_Func().read_tif(fpath)
                 # print(data.shape)
                 array_3d.append(data)
-            outf = join(outdir,site+'.tif')
+            outf = join(outdir,site + '.tif')
             try:
                 array_3d = np.array(array_3d)
                 bands_description = date_list
@@ -311,7 +311,7 @@ class Predict:
             except:
                 print(site)
                 fail_num += 1
-            print(fail_num)
+        print(fail_num)
 
         pass
 
@@ -329,6 +329,8 @@ class Predict:
             y_pred_list.append(y_pred)
         y_pred_list = np.array(y_pred_list)
         return y_pred_list,i
+
+
 
 def main():
     # Random_forests().run()
