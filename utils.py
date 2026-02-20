@@ -66,3 +66,8 @@ class RasterIO_Func_Extend(RasterIO_Func):
     def clip_tif_by_tif(self,in_tif,out_tif,clip_tif):
         bounds = self.get_tif_bounds_(clip_tif)
         self.clip_tif_by_bounds(in_tif,out_tif,bounds)
+
+    def get_tif_description(self,fpath):
+        with rasterio.open(fpath) as src:
+            band_list = src.descriptions
+        return band_list
