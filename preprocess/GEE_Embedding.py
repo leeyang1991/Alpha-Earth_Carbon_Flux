@@ -399,9 +399,39 @@ class Download_from_GEE:
         T.df_to_excel(df,outf)
 
 
+class Plot_embedding:
+
+    def __init__(self):
+
+        pass
+
+    def run(self):
+        fdir = '/home/yangli/SSD4T/Alpha-Earth_Carbon_Flux/data/Embedding/Download_from_GEE/arr/mosaic/2023/US-SRG'
+        outdir = '/home/yangli/SSD4T/Alpha-Earth_Carbon_Flux/data/Embedding/Download_from_GEE/arr/plot_embeddings/2023'
+        T.mkdir(outdir,force=True)
+        flag = 0
+        plt.figure(figsize=(20,20))
+        for f in tqdm(T.listdir(fdir)):
+            flag += 1
+            fpath = join(fdir,f)
+            data,profile = RasterIO_Func().read_tif(fpath)
+            plt.subplot(8,8,flag)
+            plt.imshow(data,cmap='RdBu')
+            plt.axis('off')
+            # plt.imshow(data)
+            # plt.title(f)
+        plt.tight_layout()
+        outf = join(outdir,'US-SRG.pdf')
+        print(outf)
+        plt.savefig(outf)
+        plt.close()
+        # plt.show()
+        pass
+
 def main():
     # Expand_points_to_rectangle().run()
-    Download_from_GEE().run()
+    # Download_from_GEE().run()
+    Plot_embedding().run()
 
     pass
 
